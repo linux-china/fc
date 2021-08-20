@@ -82,6 +82,9 @@ export default class FcBaseComponent extends BaseComponent {
       if (deployRes.function.memorySize) {
         result.function.memorySize = deployRes.function.memorySize;
       }
+      if (deployRes.function.gpuMemorySize) {
+        result.function.gpuMemorySize = deployRes.function.gpuMemorySize;
+      }
       if (deployRes.function.timeout) {
         result.function.timeout = deployRes.function.timeout;
       }
