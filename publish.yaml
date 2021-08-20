@@ -237,6 +237,12 @@ Properties:
             Default: 128
             Type:
               - Number
+          gpuMemorySize:
+            Description: function的GPU内存规格
+            Required: False
+            Default: 4096
+            Type:
+              - Number
           runtime:
             Description: function的内存规格
             Required: True
