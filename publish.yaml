@@ -243,7 +243,7 @@ Properties:
           gpuMemorySize:
             Description: function的GPU内存规格
             Required: False
-            Default: 4096
+            Default: 8192
             Type:
               - Number
           runtime:
@@ -324,7 +324,7 @@ Properties:
           instanceType:
             Description: 实例类型
             Required: False
-            Example: e1
+            Example: e1, c1, g1
             Type:
               - String
           instanceLifecycleConfig:
