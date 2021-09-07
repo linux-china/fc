@@ -1,8 +1,33 @@
 import * as core from '@serverless-devs/core';
 import _, { isEmpty } from 'lodash';
 import { isAutoConfig, genServiceStateID, getCredentials } from './utils';
+import { VpcConfig } from './interface/vpc';
 
 const HANDlER_NAS_COMMANDS = ['ls', 'cp', 'rm', 'download', 'upload', 'command'];
+
+export async function toNasAbility(region: string, vpcConfig: VpcConfig, serviceName: string, role: string, { userId, groupId, mountPointDomain, nasDir }, args?: string): Promise<any> {
+  const res = {
+    payload: {
+      regionId: region,
+      serviceName: `_FC_NAS_${serviceName}`,
+      description: `service for fc nas used for service ${serviceName}`,
+      vpcId: vpcConfig.vpcId,
+      vSwitchId: vpcConfig.vswitchIds,
+      securityGroupId: vpcConfig.securityGroupId,
+      role,
+      userId,
+      groupId,
+      mountPointDomain,
+      nasDir,
+    },
+  };
+  if (args) {
+    Object.assign(res, {
+      transformArgs: args,
+    });
+  }
+  return res;
+}
 
 export default async function toNas(props, nonOptionsArgs, args, access, commandName, credentials) {
   const {
@@ -13,22 +38,25 @@ export default async function toNas(props, nonOptionsArgs, args, access, command
   } = await getServiceConfig(props, access, credentials);
 
   if (!nasConfig) {
-    throw new Error('Not fount nasConfig.');
+    if (isAutoConfig(props?.service?.nasConfig)) {
+      throw new Error('Please run \'s nas init\' first to create nas when use auto nasConfig.');
+    }
+    throw new Error('Use this command nasConfig is necessary, but no configuration was found.Please refer to https://help.aliyun.com/document_detail/295899.html#h3-url-4 for nasConfig');
   }
 
   if (!vpcConfig) {
-    throw new Error('Not fount vpcConfig.');
+    throw new Error('Use this command vpcConfig is necessary, but no configuration was found.Please refer to https://help.aliyun.com/document_detail/295899.html#title-l5q-ggd-p0c for nasConfig');
   }
 
-  const { vpcId, vSwitchIds, securityGroupId } = vpcConfig;
+  const { vpcId } = vpcConfig;
 
   if (!vpcId) {
-    throw new Error(`Service ${name} is configured for query to vpc`);
+    throw new Error('VpcConfig has required fields for vpcId, but it is not found.Please refer to https://help.aliyun.com/document_detail/295899.html#h3-url-4 for nasConfig');
   }
 
   const { userId, groupId, mountPoints } = nasConfig;
   if (isEmpty(mountPoints)) {
-    throw new Error(`Service ${name} is configured for query to nas`);
+    throw new Error('NasConfig has required fields for mountPoints, but it is not found.Please refer to https://help.aliyun.com/document_detail/295899.html#h3-url-4 for nasConfig');
   }
 
   const { fcDirInput, needAppendNas } = getFcDirPath(nonOptionsArgs, commandName);
@@ -40,42 +68,24 @@ export default async function toNas(props, nonOptionsArgs, args, access, command
     throw new Error(`There is no nas configuration matching the path [${fcDirInput}]`);
   }
 
-  let tarnsformArgs = args;
+  let transformArgs = args;
   if (!_.isNil(transformInputDir)) {
-    tarnsformArgs = transfromArgsFunction(args, fcDirInput, needAppendNas ? `nas://${transformInputDir}` : transformInputDir);
+    transformArgs = transformArgsFunction(args, fcDirInput, needAppendNas ? `nas://${transformInputDir}` : transformInputDir);
   }
-  core.Logger.debug('FC', `tarnsformArgs: ${tarnsformArgs}`);
+  core.Logger.debug('FC', `transformArgs: ${transformArgs}`);
 
-  return {
-    tarnsformArgs,
-    payload: {
-      regionId: props?.region,
-      serviceName: `_FC_NAS_${name}`,
-      description: `service for fc nas used for service ${name}`,
-      vpcId,
-      vSwitchId: vSwitchIds[0],
-      securityGroupId,
-      role,
-      userId,
-      groupId,
-      mountPointDomain: serverAddr,
-      nasDir,
-      // excludes,
-    },
-  };
+  return toNasAbility(props?.region, vpcConfig, name, role, { userId, groupId, mountPointDomain: serverAddr, nasDir }, transformArgs);
 }
 
-function transfromArgsFunction(tarnsformArgs, fcDirInput, transformInputDir) {
-  tarnsformArgs = tarnsformArgs.replace(fcDirInput, transformInputDir);
-  if (tarnsformArgs.includes(fcDirInput)) {
-    return transfromArgsFunction(tarnsformArgs, fcDirInput, transformInputDir);
-  }
-  return tarnsformArgs;
+function transformArgsFunction(transformArgs, fcDirInput, transformInputDir) {
+  return transformArgs.replace(new RegExp(fcDirInput, 'g'), transformInputDir);
 }
 
 function throwError(args, commandName, nonOptionsArgs) {
   const example = `\n     Example: \n\t  s nas upload -r -n ./local-path /mnt/nas-path
-\t  s nas download -r /mnt/nas-path ./local-path`;
+\t  s nas download -r /mnt/nas-path ./local-path
+\t  s nas command 'ls -al /mnt/nas-path'
+\t  s nas command 'rm -rf /mnt/nas-path'`;
 
   if (['upload', 'download'].includes(commandName)) {
     if (nonOptionsArgs.length < 2) {
@@ -151,6 +161,10 @@ async function getServiceConfig(props, access, credentials) {
 
   if (isAutoConfig(vpcConfig) || _.isEmpty(vpcConfig)) {
     config.vpcConfig = cacheData?.statefulAutoConfig?.vpcConfig || cacheData?.statefulConfig?.vpcConfig;
+  }
+
+  if (!_.isEmpty(vpcConfig?.vswitchIds)) {
+    vpcConfig.vSwitchIds = vpcConfig.vswitchIds;
   }
 
   if (isAutoConfig(nasConfig)) {
